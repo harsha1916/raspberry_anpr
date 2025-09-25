@@ -253,7 +253,7 @@ class ALPR():
             downscale: Downscale factor for detection (0.5 = half size)
             roi_fraction: ROI as (fx, fy, fw, fh) fractions of frame
         """
-        # Initialize fast detector
+        # Initialize fast detector with 384x384 input size
         fast_detector = ThreadedPlateDetector(
             model_path=plate_model_path,
             conf_threshold=conf_threshold,

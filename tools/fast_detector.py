@@ -25,6 +25,12 @@ class FastPlateDetector:
         self.session = self._make_ort_session()
         self.frame_count = 0
         
+        # Print model input info for debugging
+        input_info = self.session.get_inputs()[0]
+        print(f"[FastDetector] Model input: {input_info.name}, shape: {input_info.shape}")
+        target_h, target_w = self._get_model_input_size()
+        print(f"[FastDetector] Expected input size: {target_h}x{target_w}")
+        
     def _make_ort_session(self):
         """Create optimized ONNX session for CPU inference"""
         opts = ort.SessionOptions()
@@ -38,21 +44,38 @@ class FastPlateDetector:
                                    providers=["CPUExecutionProvider"])
         return sess
     
-    def _preprocess_image(self, img, target_size=416):
+    def _get_model_input_size(self):
+        """Get the expected input size from the model"""
+        input_shape = self.session.get_inputs()[0].shape
+        # Assume NCHW format, get H and W
+        if len(input_shape) >= 4:
+            return input_shape[2], input_shape[3]  # H, W
+        elif len(input_shape) >= 3:
+            return input_shape[1], input_shape[2]  # H, W
+        else:
+            return 384, 384  # Default fallback
+    
+    def _preprocess_image(self, img, target_size=None):
         """Preprocess image for YOLO inference"""
+        if target_size is None:
+            target_h, target_w = self._get_model_input_size()
+            target_size = target_h  # Assume square input
+        else:
+            target_h = target_w = target_size
+            
         h, w = img.shape[:2]
         
         # Resize with aspect ratio preservation
-        scale = min(target_size / w, target_size / h)
+        scale = min(target_w / w, target_h / h)
         new_w = int(w * scale)
         new_h = int(h * scale)
         
         resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
         
         # Create letterbox
-        canvas = np.full((target_size, target_size, 3), 114, dtype=np.uint8)
-        x_offset = (target_size - new_w) // 2
-        y_offset = (target_size - new_h) // 2
+        canvas = np.full((target_h, target_w, 3), 114, dtype=np.uint8)
+        x_offset = (target_w - new_w) // 2
+        y_offset = (target_h - new_h) // 2
         canvas[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = resized
         
         # Convert to RGB and normalize
@@ -146,7 +169,7 @@ class FastPlateDetector:
             small_frame = frame
         
         try:
-            # Preprocess
+            # Preprocess (auto-detect model input size)
             input_tensor, scale, x_offset, y_offset = self._preprocess_image(small_frame)
             
             # Run inference
